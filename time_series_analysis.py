@@ -5,7 +5,7 @@ import matplotlib
 import mplfinance as mpf
 import os
 # Ensure the plots directory exists
-plots_dir = '/Users/mchildress/Desktop/ts_basics/plots'
+plots_dir = '/Users/mchildress/ts_basics/plots'
 os.makedirs(plots_dir, exist_ok=True)
 # Force a GUI backend on macOS so that plt.show() opens windows
 matplotlib.use('MacOSX')
@@ -23,6 +23,9 @@ df = pd.read_csv(
 )
 # Use the 'close' column as the price series
 price = df['close']
+# --- Subset for heavy computations to avoid OOM ---
+# Use only the last 10080 minutes (~1 week) for decomposition, stationarity, and ACF/PACF
+subset = price.tail(10080)
 # Debug: confirm data loaded correctly
 print("DataFrame shape:", df.shape)
 print("Price series head:\n", price.head())
@@ -64,7 +67,7 @@ plt.close()
 volatility = returns.rolling(window=20).std()
 
 plt.figure()
-plt.plot(volatility, label='Rolling Volatility (20‑min)')
+plt.plot(volatility, label='Rolling Volatility (20-min)')
 plt.title('20-Period Volatility')
 plt.xlabel('Time')
 plt.ylabel('Volatility')
@@ -74,7 +77,7 @@ plt.close()
 
 # Decompose time series
 # Choose period=1440 for daily seasonality (if 1‑min data)
-decomp = seasonal_decompose(price, model='additive', period=1440)
+decomp = seasonal_decompose(subset, model='additive', period=1440)
 
 # This creates a 4‑panel figure: observed, trend, seasonal, resid
 decomp.plot()
@@ -84,7 +87,7 @@ plt.close()
 
 # Stationarity tests
 # ---- ADF Test ----
-adf_stat, adf_p, _, _, adf_crit, _ = adfuller(price.dropna())
+adf_stat, adf_p, _, _, adf_crit, _ = adfuller(subset.dropna())
 print(f"ADF  Statistic: {adf_stat:.4f}")
 print(f"ADF  p‑Value : {adf_p:.4f}")
 print("ADF Critical Values:")
@@ -92,7 +95,7 @@ for sig, val in adf_crit.items():
     print(f"  {sig}: {val:.4f}")
 
 # ---- KPSS Test ----
-kpss_stat, kpss_p, _, kpss_crit = kpss(price.dropna(), regression='c', nlags='auto')
+kpss_stat, kpss_p, _, kpss_crit = kpss(subset.dropna(), regression='c', nlags='auto')
 print(f"\nKPSS Statistic: {kpss_stat:.4f}")
 print(f"KPSS p‑Value : {kpss_p:.4f}")
 print("KPSS Critical Values:")
@@ -100,10 +103,10 @@ for sig, val in kpss_crit.items():
     print(f"  {sig}: {val:.4f}")
 
 # Plot ACF & PACF
-plot_acf(price.dropna(), lags=40, title='ACF (up to 40 lags)')
+plot_acf(subset.dropna(), lags=40, title='ACF (up to 40 lags)')
 plt.savefig(os.path.join(plots_dir, 'acf.png'))
 plt.close()
 
-plot_pacf(price.dropna(), lags=40, title='PACF (up to 40 lags)')
+plot_pacf(subset.dropna(), lags=40, title='PACF (up to 40 lags)')
 plt.savefig(os.path.join(plots_dir, 'pacf.png'))
 plt.close()
