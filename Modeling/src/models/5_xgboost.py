@@ -21,7 +21,7 @@ class BnbXGBModel:
         self.seq_len = seq_len
         self.params = params or {
             "objective": "reg:squarederror",
-            "tree_method": "gpu_hist"
+            "tree_method": "hist"
         }
         self.num_round = num_round
         self.test_size = test_size
@@ -74,12 +74,25 @@ class BnbXGBModel:
         dtest  = xgb.DMatrix(X_test_flat,  label=Y_test)
         watchlist = [(dtrain, 'train'), (dtest, 'eval')]
 
+        # Progress bar callback for XGBoost training
+        from tqdm import tqdm
+        class TqdmCallback(xgb.callback.TrainingCallback):
+            def __init__(self, total):
+                self.pbar = tqdm(total=total, desc="Training", unit="iter")
+            def after_iteration(self, env):
+                self.pbar.update(1)
+                return False
+            def __del__(self):
+                if hasattr(self, "pbar"):
+                    self.pbar.close()
+
         self.model = xgb.train(
             self.params,
             dtrain,
             num_boost_round=self.num_round,
             evals=watchlist,
-            verbose_eval=True
+            verbose_eval=True,
+            callbacks=[TqdmCallback(self.num_round)]
         )
         self.X_test_flat = X_test_flat
         self.Y_test = Y_test
