@@ -2,7 +2,7 @@
 
 Why standard Transformers struggle with long time series
 
-Vanilla self‑ and cross‑attention treat each time step independently in the time domain, making it hard to capture overall trends and seasonal patterns—and incurring quadratic compute/memory costs as the sequence length grows.
+Vanilla self and cross‑attention treat each time step independently in the time domain, making it hard to capture overall trends and seasonal patterns. They also incur quadratic compute/memory costs as the sequence length grows.
 
 Seasonal‑trend decomposition
 
