@@ -1,0 +1,13 @@
+model:
+  input_len: 96       # encoder length
+  pred_len: 96        # decoder prediction length
+
+training:
+  batch_size: 32
+  epochs: 50
+  lr: 1e-4
+
+data:
+  tensor_path: data/windows.pt
+
+  
