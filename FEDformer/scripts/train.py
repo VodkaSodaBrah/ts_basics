@@ -1,9 +1,9 @@
-
 import os
 import sys
 import yaml
 import torch
 from torch.utils.data import TensorDataset, DataLoader
+from tqdm import tqdm
 
 # Ensure the FEDformer package directory is importable
 script_dir = os.path.dirname(__file__)
@@ -86,7 +86,8 @@ def main():
 
     for epoch in range(cfg_dict["training"]["epochs"]):
         total_loss = 0.0
-        for bx, by in loader:
+        # Progress bar for batches
+        for bx, by in tqdm(loader, desc=f"Epoch {epoch+1}/{cfg_dict['training']['epochs']}", unit="batch"):
             bx, by = bx.to(device), by.to(device)
             # Create dummy time-feature tensors matching required dimension
             zeros_enc = torch.zeros(bx.size(0), bx.size(1), d_mark, device=device)
