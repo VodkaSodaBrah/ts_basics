@@ -4,10 +4,8 @@ model:
 
 training:
   batch_size: 32
-  epochs: 5
+  epochs: 5        # reduced epochs per request
   lr: 1e-4
 
 data:
   tensor_path: data/windows.pt
-
-  

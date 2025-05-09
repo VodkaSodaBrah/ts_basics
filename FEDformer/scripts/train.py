@@ -4,6 +4,10 @@ import yaml
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
+from torch.cuda.amp import autocast, GradScaler
+
+# Determine if we should use mixed precision (only on CUDA)
+use_amp = torch.cuda.is_available()
 
 # Ensure the FEDformer package directory is importable
 script_dir = os.path.dirname(__file__)
@@ -18,7 +22,6 @@ class Configs:
     Wrapper for configuration values, matching FEDformer expected attributes.
     """
     def __init__(self, cfg):
-        # defaults adapted from repository's __main__ block
         self.version = cfg.get('version', 'Wavelets')
         self.mode_select = cfg.get('mode_select', 'random')
         self.modes = cfg.get('modes', 32)
@@ -60,33 +63,51 @@ def main():
         device = torch.device("cpu")
     print(f"Using device ➜ {device}")
 
+    # Load config
     cfg_dict = load_yaml_config()
     configs = Configs(cfg_dict)
 
-    # Load preprocessed data (from ts_basics/data/)
+    # Load preprocessed data
     data_path = os.path.abspath(os.path.join(project_root, "..", cfg_dict["data"]["tensor_path"]))
     X, Y = torch.load(data_path)
 
+    # Dataset / DataLoader with pin_memory
     ds = TensorDataset(X, Y)
     loader = DataLoader(
         ds,
         batch_size=cfg_dict["training"]["batch_size"],
         shuffle=True,
         num_workers=4,
+        pin_memory=torch.cuda.is_available(),
     )
 
     # Initialize model
     model = FEDformer(configs).to(device)
-    # Determine time-feature dimension for dummy embeddings
-    d_mark = model.enc_embedding.temporal_embedding.embed.weight.shape[1] if hasattr(model.enc_embedding.temporal_embedding, 'embed') and hasattr(model.enc_embedding.temporal_embedding.embed, 'weight') else model.enc_embedding.temporal_embedding.embed.out_features
-    # Compute decoder sequence length for creating dummy time features
+    # Only compile on CUDA to avoid MPS Inductor issues
+    if torch.cuda.is_available():
+        try:
+            model = torch.compile(model)
+        except Exception:
+            pass
+
+    # Prepare mixed-precision scaler (no-op if not using AMP)
+    scaler = GradScaler() if use_amp else None
+
+    # Compute dummy embedding dims
+    d_mark = (
+        model.enc_embedding.temporal_embedding.embed.weight.shape[1]
+        if hasattr(model.enc_embedding.temporal_embedding, 'embed') and
+           hasattr(model.enc_embedding.temporal_embedding.embed, 'weight')
+        else model.enc_embedding.temporal_embedding.embed.out_features
+    )
     dec_seq_len = configs.label_len + configs.pred_len
+
     optimizer = torch.optim.Adam(model.parameters(), lr=float(cfg_dict["training"]["lr"]))
     criterion = torch.nn.MSELoss()
 
+    # Training loop with progress bar
     for epoch in range(cfg_dict["training"]["epochs"]):
         total_loss = 0.0
-        # Progress bar for batches
         for bx, by in tqdm(
             loader,
             desc=f"Epoch {epoch+1}/{cfg_dict['training']['epochs']}",
@@ -94,18 +115,30 @@ def main():
             miniters=1,
             unit_scale=True
         ):
-            bx, by = bx.to(device), by.to(device)
-            # Create dummy time-feature tensors matching required dimension
+            # Move to device (non_blocking for pinned memory)
+            bx, by = bx.to(device, non_blocking=True), by.to(device, non_blocking=True)
+            # Dummy time features
             zeros_enc = torch.zeros(bx.size(0), bx.size(1), d_mark, device=device)
-            # Use full decoder length (label_len + pred_len) for time features
             zeros_dec = torch.zeros(bx.size(0), dec_seq_len, d_mark, device=device)
-            # Forward pass: enc_x, enc_time_feat, dec_x, dec_time_feat
-            out = model(bx, zeros_enc, by, zeros_dec)
-            loss = criterion(out, by)
+
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                # Mixed precision path
+                with autocast(device_type='cuda'):
+                    out = model(bx, zeros_enc, by, zeros_dec)
+                    loss = criterion(out, by)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                # Standard FP32 path
+                out = model(bx, zeros_enc, by, zeros_dec)
+                loss = criterion(out, by)
+                loss.backward()
+                optimizer.step()
+
             total_loss += loss.item()
+
         avg = total_loss / len(loader)
         print(f"Epoch {epoch+1:03d} ─ avg loss {avg:.6f}")
 
