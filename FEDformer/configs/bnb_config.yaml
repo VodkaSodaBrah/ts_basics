@@ -4,7 +4,7 @@ model:
 
 training:
   batch_size: 32
-  epochs: 50
+  epochs: 10
   lr: 1e-4
 
 data:
