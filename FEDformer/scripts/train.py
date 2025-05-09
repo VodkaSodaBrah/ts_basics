@@ -91,7 +91,7 @@ def main():
             pass
 
     # Prepare mixed-precision scaler (no-op if not using AMP)
-    scaler = GradScaler() if use_amp else None
+    scaler = GradScaler(device_type='cuda') if use_amp else None
 
     # Compute dummy embedding dims
     d_mark = (
