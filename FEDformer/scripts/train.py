@@ -87,7 +87,13 @@ def main():
     for epoch in range(cfg_dict["training"]["epochs"]):
         total_loss = 0.0
         # Progress bar for batches
-        for bx, by in tqdm(loader, desc=f"Epoch {epoch+1}/{cfg_dict['training']['epochs']}", unit="batch"):
+        for bx, by in tqdm(
+            loader,
+            desc=f"Epoch {epoch+1}/{cfg_dict['training']['epochs']}",
+            unit="batch",
+            miniters=1,
+            unit_scale=True
+        ):
             bx, by = bx.to(device), by.to(device)
             # Create dummy time-feature tensors matching required dimension
             zeros_enc = torch.zeros(bx.size(0), bx.size(1), d_mark, device=device)
