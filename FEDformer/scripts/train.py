@@ -4,7 +4,16 @@ import yaml
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
-from torch.cuda.amp import autocast, GradScaler
+import warnings
+# Silence common inductor warnings
+warnings.filterwarnings("ignore", module="torch._inductor")
+
+# Enable TF32 matmul precision on supported CUDA GPUs
+if torch.cuda.is_available():
+    torch.set_float32_matmul_precision('high')
+
+# AMP import for torch>=2.2
+from torch.amp import autocast, GradScaler
 
 # Determine if we should use mixed precision (only on CUDA)
 use_amp = torch.cuda.is_available()
@@ -70,6 +79,14 @@ def main():
     # Load preprocessed data
     data_path = os.path.abspath(os.path.join(project_root, "..", cfg_dict["data"]["tensor_path"]))
     X, Y = torch.load(data_path)
+    # For faster local iteration, use a small random subset of the data
+    from torch.utils.data import Subset
+    subset_size = min(2000, X.size(0))
+    indices = torch.randperm(X.size(0))[:subset_size]
+    X, Y = X[indices], Y[indices]
+    # Move entire dataset to GPU to eliminate host-to-device copies
+    if torch.cuda.is_available():
+        X, Y = X.to(device, non_blocking=True), Y.to(device, non_blocking=True)
 
     # Dataset / DataLoader with pin_memory
     ds = TensorDataset(X, Y)
@@ -77,7 +94,7 @@ def main():
         ds,
         batch_size=cfg_dict["training"]["batch_size"],
         shuffle=True,
-        num_workers=4,
+        num_workers=8,
         pin_memory=torch.cuda.is_available(),
     )
 
@@ -123,8 +140,8 @@ def main():
 
             optimizer.zero_grad()
             if use_amp:
-                # Mixed precision path
-                with autocast(device_type='cuda'):
+                # Mixed‑precision with explicit CUDA context
+                with autocast("cuda"):
                     out = model(bx, zeros_enc, by, zeros_dec)
                     loss = criterion(out, by)
                 scaler.scale(loss).backward()
@@ -141,6 +158,13 @@ def main():
 
         avg = total_loss / len(loader)
         print(f"Epoch {epoch+1:03d} ─ avg loss {avg:.6f}")
+        
+    # After training completes, save the trained weights
+    model_dir = os.path.join(project_root, "models")
+    os.makedirs(model_dir, exist_ok=True)
+    save_path = os.path.join(model_dir, "fedformer.pth")
+    torch.save(model.state_dict(), save_path)
+    print(f"Saved model weights to {save_path}")
 
 if __name__ == "__main__":
     main()

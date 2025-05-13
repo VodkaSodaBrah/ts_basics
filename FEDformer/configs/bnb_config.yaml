@@ -3,9 +3,9 @@ model:
   pred_len: 96        # decoder prediction length
 
 training:
-  batch_size: 32
+  batch_size: 512
   epochs: 5        # reduced epochs per request
-  lr: 1e-4
+  lr: 1e-5
 
 data:
   tensor_path: data/windows.pt
