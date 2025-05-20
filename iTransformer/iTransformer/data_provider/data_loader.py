@@ -227,6 +227,11 @@ class Dataset_Custom(Dataset):
         '''
         cols = list(df_raw.columns)
         cols.remove(self.target)
+        # --- patch: support 'timestamp' as date column ---
+        if 'date' not in cols and 'timestamp' in cols:
+            df_raw = df_raw.rename(columns={'timestamp': 'date'})
+            cols = list(df_raw.columns)
+        # --- end patch ---
         cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
         num_train = int(len(df_raw) * 0.7)
