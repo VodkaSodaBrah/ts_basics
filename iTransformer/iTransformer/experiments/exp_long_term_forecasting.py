@@ -100,7 +100,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             scaler = torch.cuda.amp.GradScaler()
 
         for epoch in range(self.args.train_epochs):
-            print(f"\n=== Starting epoch {epoch+1}/{self.args.train_epochs} ===")
+            print(f"\n=== Starting epoch {epoch+1}/{self.args.train_epochs} ===", flush=True)
             iter_count = 0
             train_loss = []
 
@@ -109,7 +109,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 # Print a message for the first batch of each epoch to confirm epoch start
                 if i == 0:
-                    print(f"    First batch of epoch {epoch+1}, loss placeholder")
+                    print(f"    First batch of epoch {epoch+1}, loss placeholder", flush=True)
                 iter_count += 1
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
@@ -139,7 +139,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         loss = criterion(outputs, batch_y)
                         train_loss.append(loss.item())
                         if i == 0:
-                            print(f"    First batch of epoch {epoch+1}, loss: {loss.item():.7f}")
+                            print(f"    First batch of epoch {epoch+1}, loss: {loss.item():.7f}", flush=True)
                 else:
                     if self.args.output_attention:
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
@@ -152,10 +152,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
                     if i == 0:
-                        print(f"    First batch of epoch {epoch+1}, loss: {loss.item():.7f}")
+                        print(f"    First batch of epoch {epoch+1}, loss: {loss.item():.7f}", flush=True)
 
                 if (i + 1) % 10 == 0:
-                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()), flush=True)
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
@@ -170,13 +170,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss.backward()
                     model_optim.step()
 
-            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time), flush=True)
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+                epoch + 1, train_steps, train_loss, vali_loss, test_loss
+            ), flush=True)
             # ----------------------------------------------------------------------------
             # Dump metrics to CSV file for offline plotting
             metrics_file = os.path.join(path, 'metrics.csv')
