@@ -9,3 +9,6 @@ FEDformer/models/fedformer.pth
 .DS_Store
 
 iTransformer/iTransformer/test_results
+
+iTransformer/iTransformer/results/*/true.npy
+iTransformer/iTransformer/results/*/pred.npy
