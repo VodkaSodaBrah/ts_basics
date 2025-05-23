@@ -1,149 +1,73 @@
+import os
 import argparse
-import torch
-from experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast
-from experiments.exp_long_term_forecasting_partial import Exp_Long_Term_Forecast_Partial
-import random
 import numpy as np
+import matplotlib.pyplot as plt
+
+def load_metrics(results_dir):
+    npy_path = os.path.join(results_dir, 'metrics.npy')
+    csv_path = os.path.join(results_dir, 'metrics.csv')
+    if os.path.exists(npy_path):
+        return np.load(npy_path, allow_pickle=True).item()
+    elif os.path.exists(csv_path):
+        import pandas as pd
+        df = pd.read_csv(csv_path)
+        return df.to_dict(orient='list')
+    else:
+        raise FileNotFoundError(f"No metrics file found in {results_dir}")
+
+def plot_metrics(metrics, setting, save_dir):
+    epochs = range(1, len(metrics['train_loss']) + 1)
+    plt.figure()
+    plt.plot(epochs, metrics['train_loss'], label='Train Loss')
+    plt.plot(epochs, metrics['val_loss'], label='Validation Loss')
+    plt.title(f"Training and Validation Loss - {setting}")
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, f'{setting}_loss.png'))
+    plt.close()
 
 if __name__ == '__main__':
-    fix_seed = 2023
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
-
-    parser = argparse.ArgumentParser(description='iTransformer')
-
-    # basic config
-    parser.add_argument('--is_training',    type=int,    required=True, default=1, help='status')
-    parser.add_argument('--model_id',       type=str,    required=True, default='test', help='model id')
-    parser.add_argument('--model',          type=str,    required=True, default='iTransformer',
-                        help='model name, options: [iTransformer, iInformer, iReformer, iFlowformer, iFlashformer]')
-
-    # data loader
-    parser.add_argument('--data',          type=str, default='custom', help='dataset type')
-    parser.add_argument('--root_path',     type=str, default='./data/electricity/', help='root path of the data file')
-    parser.add_argument('--data_path',     type=str, default='electricity.csv',       help='data csv file')
-    parser.add_argument('--features',      type=str, default='M',
-                        help='forecasting task, options:[M, S, MS]')
-    parser.add_argument('--target',        type=str, default='OT', help='target feature in S or MS task')
-    parser.add_argument('--freq',          type=str, default='h',
-                        help='freq for time features encoding')
-    parser.add_argument('--checkpoints',   type=str, default='./checkpoints/', help='location of model checkpoints')
-
-    # forecasting task
-    parser.add_argument('--seq_len',   type=int, default=96, help='input sequence length')
-    parser.add_argument('--label_len', type=int, default=48, help='start token length')
-    parser.add_argument('--pred_len',  type=int, default=96, help='prediction sequence length')
-
-    # model definition
-    parser.add_argument('--enc_in',   type=int, default=7,    help='encoder input size')
-    parser.add_argument('--dec_in',   type=int, default=7,    help='decoder input size')
-    parser.add_argument('--c_out',    type=int, default=7,    help='output size')
-    parser.add_argument('--d_model',  type=int, default=512,  help='dimension of model')
-    parser.add_argument('--n_heads',  type=int, default=8,    help='num of heads')
-    parser.add_argument('--e_layers', type=int, default=2,    help='num of encoder layers')
-    parser.add_argument('--d_layers', type=int, default=1,    help='num of decoder layers')
-    parser.add_argument('--d_ff',     type=int, default=2048, help='dimension of fcn')
-    parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
-    parser.add_argument('--factor',     type=int, default=1,  help='attn factor')
-    parser.add_argument('--distil',  action='store_false', default=True,
-                        help='disable distilling in encoder')
-    parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
-    parser.add_argument('--embed',    type=str, default='timeF',  help='time features encoding')
-    parser.add_argument('--activation', type=str, default='gelu', help='activation')
-    parser.add_argument('--output_attention', action='store_true', help='output attention in encoder')
-    parser.add_argument('--do_predict',       action='store_true', help='predict unseen future data')
-
-    # optimization
-    parser.add_argument('--num_workers',   type=int,   default=10,   help='data loader workers')
-    parser.add_argument('--itr',           type=int,   default=1,    help='experiment repetitions')
-    parser.add_argument('--train_epochs',  type=int,   default=10,   help='train epochs')
-    parser.add_argument('--batch_size',    type=int,   default=32,   help='batch size')
-    parser.add_argument('--patience',      type=int,   default=3,    help='early stopping patience')
-    parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning rate')
-    parser.add_argument('--des',      type=str, default='test', help='experiment description')
-    parser.add_argument('--loss',     type=str, default='MSE',  help='loss function')
-    parser.add_argument('--lradj',    type=str, default='type1', help='LR adjustment strategy')
-    parser.add_argument('--use_amp',  action='store_true', default=False, help='mixed precision')
-
-    # GPU / MPS
-    parser.add_argument('--use_gpu',       type=bool, default=True, help='allow GPU usage')
-    parser.add_argument('--gpu',           type=int,  default=0,    help='GPU device index')
-    parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple GPUs')
-    parser.add_argument('--devices',       type=str,  default='0,1,2,3', help='GPU device ids')
-
-    # iTransformer extras
-    parser.add_argument('--exp_name',               type=str, default='MTSF', help='experiment name')
-    parser.add_argument('--channel_independence',   type=bool, default=False, help='channel-independence mechanism')
-    parser.add_argument('--inverse',            action='store_true', help='inverse output data', default=False)
-    parser.add_argument('--class_strategy',     type=str, default='projection', help='projection/average/cls_token')
-    parser.add_argument('--target_root_path',   type=str, default='./data/electricity/', help='alt root path')
-    parser.add_argument('--target_data_path',   type=str, default='electricity.csv', help='alt data file')
-    parser.add_argument('--efficient_training', type=bool, default=False, help='use efficient_training')
-    parser.add_argument('--use_norm',           type=int, default=True, help='apply normalization')
-    parser.add_argument('--partial_start_index', type=int, default=0, help='variates start index')
-
+    parser = argparse.ArgumentParser(description='Plot training metrics')
+    parser.add_argument('--results_base', type=str, default='./iTransformer/results', help='Base directory for results')
+    parser.add_argument('--setting', type=str, default=None, help='Specific setting to plot')
+    parser.add_argument('--all', action='store_true', help='Plot all settings')
     args = parser.parse_args()
-    args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
-    # --- device selection: support CUDA, MPS, or CPU ---
-    if args.use_gpu:
-        device = torch.device(f"cuda:{args.gpu}")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
+    results_base = args.results_base
+    if not os.path.isdir(results_base) and os.path.isdir('./results'):
+        results_base = './results'
+        print(f"Warning: '{args.results_base}' not found, falling back to './results'")
+    settings = sorted(os.listdir(results_base))
+    settings = [
+        s for s in settings
+        if os.path.isdir(os.path.join(results_base, s))
+           and (os.path.exists(os.path.join(results_base, s, 'metrics.npy')) 
+                or os.path.exists(os.path.join(results_base, s, 'metrics.csv')))
+    ]
+
+    if args.all:
+        selected_settings = settings
+    elif args.setting is not None:
+        if args.setting in settings:
+            selected_settings = [args.setting]
+        else:
+            print(f"Warning: Setting {args.setting} not found or missing metrics file.")
+            selected_settings = []
     else:
-        device = torch.device("cpu")
-    args.device = device
-    print(f"Using device: {device}")
-    # ensure use_gpu matches device
-    args.use_gpu = False if device.type == 'cpu' else True
-    # --- end device selection ---
+        if len(settings) == 0:
+            print("No valid settings found with metrics files.")
+            selected_settings = []
+        else:
+            selected_settings = [settings[-1]]
 
-    if args.use_gpu and args.use_multi_gpu:
-        args.devices = args.devices.replace(' ', '')
-        device_ids = args.devices.split(',')
-        args.device_ids = [int(id_) for id_ in device_ids]
-        args.gpu = args.device_ids[0]
-
-    print('Args in experiment:')
-    print(args)
-
-    # pick experiment class
-    if args.exp_name == 'partial_train':
-        Exp = Exp_Long_Term_Forecast_Partial
-    else:
-        Exp = Exp_Long_Term_Forecast
-
-    if args.is_training:
-        for ii in range(args.itr):
-            setting = (
-                f"{args.model_id}_{args.model}_{args.data}_{args.features}_"
-                f"ft{args.seq_len}_sl{args.seq_len}_ll{args.label_len}_"
-                f"pl{args.pred_len}_dm{args.d_model}_nh{args.n_heads}_"
-                f"el{args.e_layers}_dl{args.d_layers}_df{args.d_ff}_"
-                f"fc{args.factor}_eb{args.embed}_dt{args.distil}_"
-                f"{args.des}_{args.class_strategy}_{ii}"
-            )
-            exp = Exp(args)
-            print(f'>>>>>>>start training : {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
-            exp.train(setting)
-            print(f'>>>>>>>testing : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-            exp.test(setting)
-            if args.do_predict:
-                print(f'>>>>>>>predicting : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-                exp.predict(setting, True)
-            torch.cuda.empty_cache()
-    else:
-        ii = 0
-        setting = (
-            f"{args.model_id}_{args.model}_{args.data}_{args.features}_"
-            f"ft{args.seq_len}_sl{args.seq_len}_ll{args.label_len}_"
-            f"pl{args.pred_len}_dm{args.d_model}_nh{args.n_heads}_"
-            f"el{args.e_layers}_dl{args.d_layers}_df{args.d_ff}_"
-            f"fc{args.factor}_eb{args.embed}_dt{args.distil}_"
-            f"{args.des}_{args.class_strategy}_{ii}"
-        )
-        exp = Exp(args)
-        print(f'>>>>>>>testing : {setting}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
-        exp.test(setting, test=1)
-        torch.cuda.empty_cache()
+    for setting in selected_settings:
+        results_dir = os.path.join(results_base, setting)
+        try:
+            metrics = load_metrics(results_dir)
+            plot_metrics(metrics, setting, results_base)
+            print(f"Plotted metrics for {setting}")
+        except FileNotFoundError as e:
+            print(e)

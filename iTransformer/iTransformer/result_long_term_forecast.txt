@@ -1,0 +1,6 @@
+bnb_quick_test_iTransformer_custom_S_ft60_sl60_ll30_pl10_dm256_nh4_el1_dl1_df2048_fc1_ebtimeF_dtTrue_test_projection_0  
+mse:3.022462988155894e-05, mae:0.003252167720347643
+
+bnb_usdt_1m_iTransformer_custom_S_ft720_sl720_ll720_pl96_dm512_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_test_projection_0  
+mse:0.0003016378032043576, mae:0.00992161501199007
+

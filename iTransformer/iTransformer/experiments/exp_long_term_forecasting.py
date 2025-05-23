@@ -9,6 +9,7 @@ import os
 import time
 import warnings
 import numpy as np
+from torch.utils.data import DataLoader
 
 warnings.filterwarnings('ignore')
 
@@ -26,6 +27,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def _get_data(self, flag):
         data_set, data_loader = data_provider(self.args, flag)
+        # for the test split, use a smaller batch size to reduce memory usage
+        if flag == 'test':
+            data_loader = DataLoader(
+                data_set,
+                batch_size=1,
+                shuffle=False,
+                num_workers=self.args.num_workers
+            )
         return data_set, data_loader
 
     def _select_optimizer(self):
@@ -199,7 +208,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             # get_cka(self.args, setting, self.model, train_loader, self.device, epoch)
 
         best_model_path = path + '/' + 'checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        self.model.load_state_dict(torch.load(best_model_path, map_location=self.device))
 
         return self.model
 
@@ -207,7 +216,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(
+                torch.load(
+                    os.path.join(self.args.checkpoints, setting, 'checkpoint.pth'),
+                    map_location=self.device
+                )
+            )
 
         preds = []
         trues = []
@@ -261,13 +275,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 preds.append(pred)
                 trues.append(true)
                 if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
+                    input_np = batch_x.detach().cpu().numpy()
                     if test_data.scale and self.args.inverse:
-                        shape = input.shape
-                        input = test_data.inverse_transform(input.squeeze(0)).reshape(shape)
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                        shape = input_np.shape
+                        input_np = test_data.inverse_transform(input_np.squeeze(0)).reshape(shape)
+                    gt = np.concatenate((input_np[0, :, -1], true[0, :, -1]), axis=0)
+                    pd = np.concatenate((input_np[0, :, -1], pred[0, :, -1]), axis=0)
                     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                # free up device memory after each batch
+                del batch_x, batch_y, batch_x_mark, batch_y_mark, outputs, pred, true
+                torch.mps.empty_cache()
 
         preds = np.array(preds)
         trues = np.array(trues)

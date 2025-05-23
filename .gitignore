@@ -7,3 +7,5 @@ FEDformer/fedformer
 
 FEDformer/models/fedformer.pth
 .DS_Store
+
+iTransformer/iTransformer/test_results
